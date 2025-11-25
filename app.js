@@ -8,9 +8,20 @@ import {
   MessageComponentTypes,
   verifyKeyMiddleware,
 } from 'discord-interactions';
+import fetch from 'node-fetch';
 import { exec } from 'child_process';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
+
+const ROLE_MAP = {
+  Staff: '1443010837055934474',
+  Board: '1443010472474316990',
+  TA: '1443010450202820699',
+  Student: '1443010418942410842',
+};
+
+const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
+const GOOGLE_REDIRECT_URI = 'https://discord.nixorcorporate.com/auth/callback';
 
 // Create an express app
 const app = express();
@@ -193,12 +204,161 @@ if (name === 'restart-kairos') {
       return;
     }
 
+    if (name === 'setup-verification') {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: 'Click the button below to verify with Google.',
+          components: [
+            {
+              type: MessageComponentTypes.ACTION_ROW,
+              components: [
+                {
+                  type: MessageComponentTypes.BUTTON,
+                  style: ButtonStyleTypes.PRIMARY,
+                  label: 'Login with Nixor Google',
+                  custom_id: 'verify_google_init',
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+
     console.error(`unknown command: ${name}`);
     return res.status(400).json({ error: 'unknown command' });
   }
 
+  if (type === InteractionType.MESSAGE_COMPONENT) {
+    const { custom_id: customId } = data;
+    const { member, guild_id: guildId } = req.body;
+
+    if (customId === 'verify_google_init') {
+      const userId = member?.user?.id;
+      const statePayload = Buffer.from(
+        JSON.stringify({ userId, guildId }),
+      ).toString('base64url');
+
+      const oauthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      oauthUrl.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
+      oauthUrl.searchParams.set('redirect_uri', GOOGLE_REDIRECT_URI);
+      oauthUrl.searchParams.set('response_type', 'code');
+      oauthUrl.searchParams.set('scope', GOOGLE_AUTH_SCOPES.join(' '));
+      oauthUrl.searchParams.set('state', statePayload);
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `Click here to verify: ${oauthUrl.toString()}`,
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+
+    console.error(`unknown component: ${customId}`);
+    return res.status(400).json({ error: 'unknown component' });
+  }
+
   console.error('unknown interaction type', type);
   return res.status(400).json({ error: 'unknown interaction type' });
+});
+
+app.get('/auth/callback', async (req, res) => {
+  const { code, state } = req.query;
+
+  if (!code || !state) {
+    return res.status(400).send('Missing code or state.');
+  }
+
+  let stateData;
+  try {
+    stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+  } catch (err) {
+    console.error('Failed to parse state:', err);
+    return res.status(400).send('Invalid state.');
+  }
+
+  const { userId, guildId } = stateData || {};
+
+  if (!userId || !guildId) {
+    return res.status(400).send('Missing Discord user or guild.');
+  }
+
+  try {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok) {
+      console.error('Google token error:', tokenData);
+      return res.status(500).send('Failed to verify with Google.');
+    }
+
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    const userInfo = await userInfoResponse.json();
+
+    if (!userInfoResponse.ok || !userInfo.email) {
+      console.error('Failed to fetch Google user info:', userInfo);
+      return res.status(500).send('Failed to fetch Google profile.');
+    }
+
+    const sheetResponse = await fetch(`${process.env.SCRIPT_API_URL}?email=${encodeURIComponent(userInfo.email)}`);
+    const sheetData = await sheetResponse.json();
+
+    if (!sheetResponse.ok || sheetData?.found === false) {
+      return res.send('<html><body>Email not found in database.</body></html>');
+    }
+
+    const roleId = ROLE_MAP[sheetData.role];
+    const authHeader = `Bot ${process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN}`;
+
+    if (sheetData.name) {
+      const nicknameResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nick: sheetData.name }),
+      });
+
+      if (!nicknameResponse.ok) {
+        console.error('Failed to update nickname:', await nicknameResponse.text());
+      }
+    }
+
+    if (roleId) {
+      const roleResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
+        method: 'PUT',
+        headers: { Authorization: authHeader },
+      });
+
+      if (!roleResponse.ok) {
+        console.error('Failed to assign role:', await roleResponse.text());
+      }
+    }
+
+    return res.send('<html><body>Verification Successful! You can close this.</body></html>');
+  } catch (err) {
+    console.error('Verification flow failed:', err);
+    return res.status(500).send('An error occurred during verification.');
+  }
 });
 
 app.listen(PORT, () => {
