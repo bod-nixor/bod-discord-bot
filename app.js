@@ -74,7 +74,7 @@ if (name === 'restart-kairos') {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: '⛔ You are not authorized',
+            content: 'â›” You are not authorized',
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
@@ -84,7 +84,7 @@ if (name === 'restart-kairos') {
       res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '🔄 Triggering restart script...',
+          content: 'ðŸ”„ Triggering restart script...',
         },
       });
 
@@ -101,7 +101,7 @@ if (name === 'restart-kairos') {
             await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
                 method: 'PATCH',
                 body: {
-                    content: '🔄 Triggering restart script...\n✅ **Restart successful!**',
+                    content: 'ðŸ”„ Triggering restart script...\nâœ… **Restart successful!**',
                 },
             });
         } catch (err) {
@@ -109,6 +109,87 @@ if (name === 'restart-kairos') {
         }
       });
 
+      return;
+    }
+    
+    if (name === 'check-kairos') {
+      const { token } = req.body;
+
+      // --- SECURITY CHECK (Same as restart) ---
+      const hasAccess =
+        guildId === '1442961521922543750' &&
+        member?.roles?.includes('1442988775268417688');
+
+      if (!hasAccess) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: { content: '⛔ Not authorized.', flags: 64 },
+        });
+      }
+
+      // 1. Send immediate "Thinking" message
+      res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { content: '🔎 Checking system status...' },
+      });
+
+      // 2. Define the Checks
+      const checkInternal = (cmd) => {
+        return new Promise((resolve) => {
+          exec(cmd, (error) => {
+            // grep returns error code 1 if not found, 0 if found
+            resolve(!error); 
+          });
+        });
+      };
+
+      const checkExternal = async (url) => {
+        try {
+          // Set a 5-second timeout so the bot doesn't hang
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeout);
+          
+          return response.status >= 200 && response.status < 500;
+        } catch (e) {
+          return false;
+        }
+      };
+
+      // 3. Run all checks in parallel
+      const [tunnelProcess, pythonProcess, websitePublic, socketPublic] = await Promise.all([
+        checkInternal('pgrep -f "kairos-ws.yaml"'),
+        checkInternal('pgrep -f "ws_server.py"'),
+        // Check the signoff page
+        checkExternal('https://kairos.nixorcorporate.com/signoff/'),
+        // Check Socket.io specifically via polling (Works for WSS)
+        checkExternal('https://kairos.nixorcorporate.com/websocket/socket.io/?EIO=4&transport=polling')
+      ]);
+
+      // 4. Format the results
+      const statusMsg = [
+        `**System Status Report**`,
+        `---------------------------`,
+        `**Internal Processes (cPanel)**`,
+        `${tunnelProcess ? '✅' : '❌'} Cloudflare Tunnel (Process)`,
+        `${pythonProcess ? '✅' : '❌'} Python Server (Process)`,
+        ``,
+        `**External Access (Public URL)**`,
+        `${websitePublic ? '✅' : '❌'} Website (HTTPS)`,
+        `${socketPublic ? '✅' : '❌'} Websocket (WSS/Socket.io)`,
+      ].join('\n');
+
+      // 5. Update the message
+      try {
+        await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
+          method: 'PATCH',
+          body: { content: statusMsg },
+        });
+      } catch (err) {
+        console.error('Failed to update status message:', err);
+      }
       return;
     }
 

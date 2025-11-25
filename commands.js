@@ -52,6 +52,14 @@ const RESTART_KAIROS = {
   contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, RESTART_KAIROS];
+const CHECK_KAIROS = {
+  name: 'check-kairos',
+  description: 'Check health of Tunnel, Website, and Websocket',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
+
+const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, RESTART_KAIROS, CHECK_KAIROS];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
