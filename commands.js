@@ -44,6 +44,12 @@ const CHALLENGE_COMMAND = {
   contexts: [0, 2],
 };
 
+const RESTART_KAIROS = {
+  "name": "restart-kairos",
+  "description": "Restart the Kairos websocket and tunnel",
+  "type": 1
+}
+
 const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);

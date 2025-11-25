@@ -8,6 +8,7 @@ import {
   MessageComponentTypes,
   verifyKeyMiddleware,
 } from 'discord-interactions';
+import { exec } from 'child_process';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
 
@@ -39,6 +40,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
    */
   if (type === InteractionType.APPLICATION_COMMAND) {
     const { name } = data;
+    const { guild_id: guildId, member } = req.body;
 
     // "test" command
     if (name === 'test') {
@@ -54,6 +56,40 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               content: `hello world ${getRandomEmoji()}`
             }
           ]
+        },
+      });
+    }
+
+    if (name === 'restart-kairos') {
+      const hasAccess =
+        guildId === '1442961521922543750' &&
+        member?.roles?.includes('1442988775268417688');
+
+      if (!hasAccess) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'You are not authorized',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      exec('/home/nixorc5/start-kairos.sh', (error, stdout, stderr) => {
+        if (error) {
+          console.error('Error executing restart script:', error);
+        }
+
+        if (stderr) {
+          console.error('Restart script stderr:', stderr);
+        }
+      });
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: 'Triggering restart script...',
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
