@@ -1,0 +1,8 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/nixorc5/discord/bod-discord-bot"
+PassengerBaseURI "/"
+PassengerNodejs "/home/nixorc5/nodevenv/discord/bod-discord-bot/24/bin/node"
+PassengerAppType node
+PassengerStartupFile app.js
+PassengerAppLogFile "/home/nixorc5/discord/bod-discord-bot/logs.log"
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
