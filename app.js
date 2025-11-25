@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import express from 'express';
 import {
   ButtonStyleTypes,
@@ -22,6 +23,77 @@ const ROLE_MAP = {
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
 const GOOGLE_REDIRECT_URI = 'https://discord.nixorcorporate.com/auth/callback';
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+const getStateSecret = () => {
+  const secret = process.env.OAUTH_STATE_SECRET;
+
+  if (!secret) {
+    console.error('Missing OAUTH_STATE_SECRET');
+  }
+
+  return secret;
+};
+
+const signOAuthState = (encodedPayload) => {
+  const secret = getStateSecret();
+
+  if (!secret) {
+    return null;
+  }
+
+  return crypto.createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+};
+
+const verifyOAuthState = (state) => {
+  const secret = getStateSecret();
+
+  if (!secret) {
+    return { valid: false, reason: 'Missing state secret' };
+  }
+
+  if (!state.includes('.')) {
+    return { valid: false, reason: 'Malformed state' };
+  }
+
+  const [encodedPayload, providedSignature] = state.split('.');
+
+  if (!encodedPayload || !providedSignature) {
+    return { valid: false, reason: 'Incomplete state' };
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(encodedPayload)
+    .digest('base64url');
+
+  const signaturesMatch =
+    providedSignature.length === expectedSignature.length &&
+    crypto.timingSafeEqual(Buffer.from(providedSignature), Buffer.from(expectedSignature));
+
+  if (!signaturesMatch) {
+    return { valid: false, reason: 'State signature mismatch' };
+  }
+
+  let payload;
+
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+  } catch (err) {
+    console.error('Failed to parse verified state payload:', err);
+    return { valid: false, reason: 'Invalid state payload' };
+  }
+
+  if (!payload.userId || !payload.guildId) {
+    return { valid: false, reason: 'State missing Discord context' };
+  }
+
+  if (!payload.exp || Date.now() > payload.exp) {
+    return { valid: false, reason: 'State expired' };
+  }
+
+  return { valid: true, payload };
+};
 
 // Create an express app
 const app = express();
@@ -236,9 +308,27 @@ if (name === 'restart-kairos') {
 
     if (customId === 'verify_google_init') {
       const userId = member?.user?.id;
-      const statePayload = Buffer.from(
-        JSON.stringify({ userId, guildId }),
-      ).toString('base64url');
+      const payload = JSON.stringify({
+        userId,
+        guildId,
+        exp: Date.now() + OAUTH_STATE_TTL_MS,
+        nonce: crypto.randomBytes(16).toString('base64url'),
+      });
+
+      const encodedPayload = Buffer.from(payload).toString('base64url');
+      const signature = signOAuthState(encodedPayload);
+
+      if (!signature) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Verification is not available right now. Please contact an admin.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const statePayload = `${encodedPayload}.${signature}`;
 
       const oauthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       oauthUrl.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
@@ -271,19 +361,14 @@ app.get('/auth/callback', async (req, res) => {
     return res.status(400).send('Missing code or state.');
   }
 
-  let stateData;
-  try {
-    stateData = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
-  } catch (err) {
-    console.error('Failed to parse state:', err);
-    return res.status(400).send('Invalid state.');
+  const stateValidation = verifyOAuthState(state);
+
+  if (!stateValidation.valid) {
+    console.error('Invalid OAuth state:', stateValidation.reason);
+    return res.status(400).send('Invalid or expired state.');
   }
 
-  const { userId, guildId } = stateData || {};
-
-  if (!userId || !guildId) {
-    return res.status(400).send('Missing Discord user or guild.');
-  }
+  const { userId, guildId } = stateValidation.payload;
 
   try {
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
