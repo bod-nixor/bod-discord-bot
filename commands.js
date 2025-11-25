@@ -60,6 +60,15 @@ const CHECK_KAIROS = {
   contexts: [0, 1, 2],
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, RESTART_KAIROS, CHECK_KAIROS];
+const SETUP_VERIFICATION = {
+  name: 'setup-verification',
+  description: 'Post the Google verification button',
+  type: 1,
+  integration_types: [0],
+  contexts: [0],
+  default_member_permissions: '8',
+};
+
+const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, RESTART_KAIROS, CHECK_KAIROS, SETUP_VERIFICATION];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
