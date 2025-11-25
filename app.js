@@ -280,7 +280,7 @@ if (name === 'restart-kairos') {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: 'Click the button below to verify with Google.',
+          content: 'Click the button below to verify yourself.',
           components: [
             {
               type: MessageComponentTypes.ACTION_ROW,
@@ -288,7 +288,7 @@ if (name === 'restart-kairos') {
                 {
                   type: MessageComponentTypes.BUTTON,
                   style: ButtonStyleTypes.PRIMARY,
-                  label: 'Login with Nixor Google',
+                  label: 'Login with your Nixor Account',
                   custom_id: 'verify_google_init',
                 },
               ],
