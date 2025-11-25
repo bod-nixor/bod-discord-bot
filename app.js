@@ -60,7 +60,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
-    if (name === 'restart-kairos') {
+if (name === 'restart-kairos') {
+      // Get the token so we can edit the message later
+      const { token } = req.body;
+      
+      // --- SECURITY CHECK ---
+      // Make sure this logic matches what worked for you (checking User ID or Role)
       const hasAccess =
         guildId === '1442961521922543750' &&
         member?.roles?.includes('1442988775268417688');
@@ -69,29 +74,42 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: 'You are not authorized',
+            content: '⛔ You are not authorized',
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
       }
 
-      exec('/home/nixorc5/start-kairos.sh', (error, stdout, stderr) => {
-        if (error) {
-          console.error('Error executing restart script:', error);
-        }
-
-        if (stderr) {
-          console.error('Restart script stderr:', stderr);
-        }
-      });
-
-      return res.send({
+      // 1. Send the IMMEDIATE public message (No Ephemeral flag)
+      res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: 'Triggering restart script...',
-          flags: InteractionResponseFlags.EPHEMERAL,
+          content: '🔄 Triggering restart script...',
         },
       });
+
+      // 2. Execute the script
+      exec('/home/nixorc5/start-kairos.sh', async (error, stdout, stderr) => {
+        if (error) {
+          console.error('Error executing restart script:', error);
+          // Optional: Edit message to show error if script fails
+          return;
+        }
+
+        // 3. Script finished? Edit the original message to say Success
+        try {
+            await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
+                method: 'PATCH',
+                body: {
+                    content: '🔄 Triggering restart script...\n✅ **Restart successful!**',
+                },
+            });
+        } catch (err) {
+            console.error('Error editing interaction response:', err);
+        }
+      });
+
+      return;
     }
 
     console.error(`unknown command: ${name}`);
