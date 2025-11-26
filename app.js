@@ -414,13 +414,35 @@ app.get('/auth/callback', async (req, res) => {
     const authHeader = `Bot ${process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN}`;
 
     if (sheetData.name) {
+      // 1. Define Prefixes based on Role Name (from Google Sheet)
+      const PREFIX_MAP = {
+        'TA': '[TA]',
+        'Staff': '[Staff]',
+        'Board': '[BoD]',
+        'Student': '' // No prefix for students
+      };
+
+      // 2. Determine the correct prefix
+      // If the role isn't in the map, default to empty string
+      const prefix = PREFIX_MAP[sheetData.role] ? `${PREFIX_MAP[sheetData.role]} ` : '';
+      
+      // 3. Construct the full nickname
+      let fullNickname = `${prefix}${sheetData.name}`;
+
+      // 4. CRITICAL: Enforce Discord's 32-character limit
+      // If we don't do this, the API request will crash for long names
+      if (fullNickname.length > 32) {
+        fullNickname = fullNickname.substring(0, 32);
+      }
+
+      // 5. Send the update request
       const nicknameResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
         method: 'PATCH',
         headers: {
           Authorization: authHeader,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ nick: sheetData.name }),
+        body: JSON.stringify({ nick: fullNickname }),
       });
 
       if (!nicknameResponse.ok) {
