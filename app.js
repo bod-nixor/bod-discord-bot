@@ -18,7 +18,8 @@ const ROLE_MAP = {
   Staff: '1443010837055934474',
   Board: '1443010472474316990',
   TA: '1443010450202820699',
-  Student: '1443010418942410842',
+  CIO: '1443010418942410842',
+  CFO: '1443630445529927700'
 };
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
@@ -419,7 +420,8 @@ app.get('/auth/callback', async (req, res) => {
         'TA': '[TA]',
         'Staff': '[Staff]',
         'Board': '[BoD]',
-        'Student': '' // No prefix for students
+        'CIO': '', // No prefix for students
+        'CFO': ''
       };
 
       // 2. Determine the correct prefix
