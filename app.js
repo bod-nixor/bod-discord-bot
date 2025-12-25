@@ -417,7 +417,7 @@ app.get('/auth/callback', async (req, res) => {
       // 1. Define Prefixes based on Role Name (from Google Sheet)
       const PREFIX_MAP = {
         'TA': '[TA]',
-        'Teacher': '[Staff]',
+        'Teacher': '[Teacher]',
         'Board': '[BoD]',
         'Student': '' // No prefix for students
       };
