@@ -15,11 +15,10 @@ import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
 
 const ROLE_MAP = {
-  Staff: '1443010837055934474',
-  Board: '1443010472474316990',
-  TA: '1443010450202820699',
-  CIO: '1443010418942410842',
-  CFO: '1443630445529927700'
+  Board: '1453721165897142312',
+  TA: '1453721029515149342',
+  Student: '1453720981204898001',
+  Teacher: '1453721105918459925'
 };
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
@@ -418,10 +417,9 @@ app.get('/auth/callback', async (req, res) => {
       // 1. Define Prefixes based on Role Name (from Google Sheet)
       const PREFIX_MAP = {
         'TA': '[TA]',
-        'Staff': '[Staff]',
+        'Teacher': '[Staff]',
         'Board': '[BoD]',
-        'CIO': '', // No prefix for students
-        'CFO': ''
+        'Student': '' // No prefix for students
       };
 
       // 2. Determine the correct prefix
