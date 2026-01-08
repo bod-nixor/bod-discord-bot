@@ -651,7 +651,7 @@ app.get('/auth/callback', async (req, res) => {
         console.error('Failed to assign role:', await roleResponse.text());
       }
     } else {
-      console.warn(`No roleId provided for ${sheetData.email || userInfo.email}; skipping role assignment.`);
+      console.warn(`No roleId provided for user ${userId || 'unknown'} in guild ${guildId}; skipping role assignment.`);
     }
 
     return res.send('<html><body>Verification Successful! You can close this.</body></html>');
