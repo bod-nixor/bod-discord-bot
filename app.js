@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import crypto from 'crypto';
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import {
   ButtonStyleTypes,
   InteractionResponseFlags,
@@ -10,20 +12,17 @@ import {
   verifyKeyMiddleware,
 } from 'discord-interactions';
 import fetch from 'node-fetch';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
-
-const ROLE_MAP = {
-  Board: '1453721165897142312',
-  TA: '1453721029515149342',
-  Student: '1453720981204898001',
-  Teacher: '1453721105918459925'
-};
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
 const GOOGLE_REDIRECT_URI = 'https://discord.nixorcorporate.com/auth/callback';
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_EXEC_TIMEOUT_MS = 30000;
+const DISCORD_MESSAGE_LIMIT = 2000;
+const SCRIPT_CONFIG_PATH = path.resolve(process.cwd(), 'config', 'scripts.json');
+let scriptConfigWriteLock = Promise.resolve();
 
 const getStateSecret = () => {
   const secret = process.env.OAUTH_STATE_SECRET;
@@ -95,6 +94,84 @@ const verifyOAuthState = (state) => {
   return { valid: true, payload };
 };
 
+const truncateMessage = (message) => {
+  if (!message) {
+    return '';
+  }
+  if (message.length <= DISCORD_MESSAGE_LIMIT) {
+    return message;
+  }
+  const suffix = '\n...(truncated)';
+  return `${message.slice(0, DISCORD_MESSAGE_LIMIT - suffix.length)}${suffix}`;
+};
+
+const loadScriptConfig = async () => {
+  try {
+    const rawConfig = await fs.readFile(SCRIPT_CONFIG_PATH, 'utf8');
+    return JSON.parse(rawConfig);
+  } catch (err) {
+    console.error('Failed to load script config:', err);
+    return null;
+  }
+};
+
+const withScriptConfigLock = async (fn) => {
+  const release = scriptConfigWriteLock;
+  let releaseNext;
+  scriptConfigWriteLock = new Promise((resolve) => {
+    releaseNext = resolve;
+  });
+  await release;
+  try {
+    return await fn();
+  } finally {
+    releaseNext();
+  }
+};
+
+const writeScriptConfig = async (config) => {
+  await fs.mkdir(path.dirname(SCRIPT_CONFIG_PATH), { recursive: true });
+  const tempPath = `${SCRIPT_CONFIG_PATH}.tmp-${Date.now()}`;
+  await fs.writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  await fs.rename(tempPath, SCRIPT_CONFIG_PATH);
+};
+
+const parseCsvList = (value) => {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+};
+
+const resolveScriptPath = (scriptsDir, scriptName) => {
+  const resolved = path.resolve(scriptsDir, scriptName);
+  const relative = path.relative(scriptsDir, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+  return resolved;
+};
+
+const getOptionValue = (options, optionName) =>
+  options?.find((option) => option.name === optionName)?.value;
+
+const ensureGuildContext = (guildId, res) => {
+  if (guildId) {
+    return true;
+  }
+  res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: 'This command can only be used in a server.',
+      flags: InteractionResponseFlags.EPHEMERAL,
+    },
+  });
+  return false;
+};
+
 // Create an express app
 const app = express();
 // Get port, or default to 3000
@@ -143,137 +220,257 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
-if (name === 'restart-kairos') {
-      // Get the token so we can edit the message later
+    if (name === 'execute') {
       const { token } = req.body;
-      
-      // --- SECURITY CHECK ---
-      // Make sure this logic matches what worked for you (checking User ID or Role)
-      const hasAccess =
-        guildId === '1442961521922543750' &&
-        member?.roles?.includes('1442988775268417688');
-
-      if (!hasAccess) {
+      if (!ensureGuildContext(guildId, res)) {
+        return;
+      }
+      const scriptKey = getOptionValue(data.options, 'name');
+      if (!scriptKey) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: 'â›” You are not authorized',
+            content: 'Missing script name.',
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
       }
 
-      // 1. Send the IMMEDIATE public message (No Ephemeral flag)
-      res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: 'ðŸ”„ Triggering restart script...',
-        },
-      });
+      const scriptConfig = await loadScriptConfig();
+      if (!scriptConfig?.commands) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Script configuration is unavailable.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
 
-      // 2. Execute the script
-      exec('/home/nixorc5/start-kairos.sh', async (error, stdout, stderr) => {
-        if (error) {
-          console.error('Error executing restart script:', error);
-          // Optional: Edit message to show error if script fails
-          return;
-        }
+      const commandConfig = scriptConfig.commands[scriptKey];
+      if (!commandConfig) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Unknown script "${scriptKey}".`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
 
-        // 3. Script finished? Edit the original message to say Success
-        try {
-            await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
-                method: 'PATCH',
-                body: {
-                    content: 'ðŸ”„ Triggering restart script...\nâœ… **Restart successful!**',
-                },
-            });
-        } catch (err) {
-            console.error('Error editing interaction response:', err);
-        }
-      });
+      if (commandConfig.allowed_guilds?.length && !commandConfig.allowed_guilds.includes(guildId)) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: { content: '⛔ Not authorized for this server.', flags: InteractionResponseFlags.EPHEMERAL },
+        });
+      }
 
-      return;
-    }
-    
-    if (name === 'check-kairos') {
-      const { token } = req.body;
-
-      // --- SECURITY CHECK (Same as restart) ---
-      const hasAccess =
-        guildId === '1442961521922543750' &&
-        member?.roles?.includes('1442988775268417688');
+      const memberRoles = member?.roles ?? [];
+      const allowedRoles = commandConfig.allowed_roles ?? [];
+      const hasAccess = allowedRoles.some((roleId) => memberRoles.includes(roleId));
 
       if (!hasAccess) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: { content: '⛔ Not authorized.', flags: 64 },
+          data: {
+            content: '⛔ You are not authorized to run this script.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
         });
       }
 
-      // 1. Send immediate "Thinking" message
+      const scriptsDir = scriptConfig.scripts_dir || '/home/nixorc5/scripts';
+      if (commandConfig.script?.includes('/') || commandConfig.script?.includes('\\')) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Invalid script configuration.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+      const scriptPath = resolveScriptPath(scriptsDir, commandConfig.script);
+
+      if (!commandConfig.script || !scriptPath) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Invalid script configuration.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const responseFlags = commandConfig.ephemeral ? InteractionResponseFlags.EPHEMERAL : undefined;
       res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: { content: '🔎 Checking system status...' },
+        data: {
+          content: `Running ${scriptKey}...`,
+          ...(responseFlags ? { flags: responseFlags } : {}),
+        },
       });
 
-      // 2. Define the Checks
-      const checkInternal = (cmd) => {
-        return new Promise((resolve) => {
-          exec(cmd, (error) => {
-            // grep returns error code 1 if not found, 0 if found
-            resolve(!error); 
-          });
-        });
-      };
+      const timeoutMs = Number(commandConfig.timeout_ms) || DEFAULT_EXEC_TIMEOUT_MS;
+      execFile(
+        scriptPath,
+        { timeout: timeoutMs, encoding: 'utf8' },
+        async (error, stdout, stderr) => {
+          let message;
+          if (error) {
+            console.error(`Script execution failed for ${scriptKey}:`, error);
+            const errorDetails = stderr?.trim() || error.message || 'Unknown error';
+            message = `❌ ${scriptKey} failed.\n${errorDetails}`;
+          } else {
+            const output = stdout?.trim() || 'Command completed successfully.';
+            message = `✅ ${scriptKey} completed.\n${output}`;
+          }
 
-      const checkExternal = async (url) => {
-        try {
-          // Set a 5-second timeout so the bot doesn't hang
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 5000);
-          
-          const response = await fetch(url, { signal: controller.signal });
-          clearTimeout(timeout);
-          
-          return response.status >= 200 && response.status < 500;
-        } catch (e) {
-          return false;
+          try {
+            await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
+              method: 'PATCH',
+              body: { content: truncateMessage(message) },
+            });
+          } catch (err) {
+            console.error('Failed to update script execution response:', err);
+          }
         }
-      };
-
-      // 3. Run all checks in parallel
-      const [tunnelProcess, pythonProcess, websitePublic, socketPublic] = await Promise.all([
-        checkInternal('pgrep -f "kairos-ws.yaml"'),
-        checkInternal('pgrep -f "ws_server.py"'),
-        // Check the signoff page
-        checkExternal('https://kairos.nixorcorporate.com/signoff/'),
-        // Check Socket.io specifically via polling (Works for WSS)
-        checkExternal('https://kairos.nixorcorporate.com/websocket/socket.io/?EIO=4&transport=polling')
-      ]);
-
-      // 4. Format the results
-      const statusMsg = [
-        `**System Status Report**`,
-        `---------------------------`,
-        `**Internal Processes (cPanel)**`,
-        `${tunnelProcess ? '✅' : '❌'} Cloudflare Tunnel (Process)`,
-        `${pythonProcess ? '✅' : '❌'} Python Server (Process)`,
-        ``,
-        `**External Access (Public URL)**`,
-        `${websitePublic ? '✅' : '❌'} Website (HTTPS)`,
-        `${socketPublic ? '✅' : '❌'} Websocket (WSS/Socket.io)`,
-      ].join('\n');
-
-      // 5. Update the message
-      try {
-        await DiscordRequest(`webhooks/${process.env.APP_ID}/${token}/messages/@original`, {
-          method: 'PATCH',
-          body: { content: statusMsg },
-        });
-      } catch (err) {
-        console.error('Failed to update status message:', err);
-      }
+      );
       return;
+    }
+
+    if (name === 'admin-script') {
+      if (!ensureGuildContext(guildId, res)) {
+        return;
+      }
+      const subcommand = data.options?.[0];
+      const subcommandName = subcommand?.name;
+      const options = subcommand?.options ?? [];
+
+      const scriptConfig = await loadScriptConfig();
+      if (!scriptConfig) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Script configuration is unavailable.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const superAdminRoles = scriptConfig.super_admin_roles ?? [];
+      const memberRoles = member?.roles ?? [];
+      const isSuperAdmin = superAdminRoles.some((roleId) => memberRoles.includes(roleId));
+
+      if (!isSuperAdmin) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: { content: '⛔ You are not authorized to manage scripts.', flags: InteractionResponseFlags.EPHEMERAL },
+        });
+      }
+
+      if (!subcommandName) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: { content: 'Missing subcommand.', flags: InteractionResponseFlags.EPHEMERAL },
+        });
+      }
+
+      return withScriptConfigLock(async () => {
+        const latestConfig = (await loadScriptConfig()) || scriptConfig;
+        latestConfig.commands = latestConfig.commands ?? {};
+        let responseMessage = '';
+
+        if (subcommandName === 'list') {
+          const filter = getOptionValue(options, 'filter');
+          const entries = Object.entries(latestConfig.commands).filter(([key]) =>
+            filter ? key.includes(filter) : true
+          );
+          if (!entries.length) {
+            responseMessage = 'No scripts configured.';
+          } else {
+            responseMessage = entries
+              .map(([key, value]) => `• ${key} — ${value.description || 'No description'}`)
+              .join('\n');
+          }
+        } else if (subcommandName === 'delete') {
+          const nameValue = getOptionValue(options, 'name');
+          if (!nameValue) {
+            responseMessage = 'Missing script name.';
+          } else if (!latestConfig.commands[nameValue]) {
+            responseMessage = `Script "${nameValue}" does not exist.`;
+          } else {
+            delete latestConfig.commands[nameValue];
+            await writeScriptConfig(latestConfig);
+            responseMessage = `Deleted script "${nameValue}".`;
+          }
+        } else if (subcommandName === 'add' || subcommandName === 'update') {
+          const nameValue = getOptionValue(options, 'name');
+          if (!nameValue) {
+            responseMessage = 'Missing script name.';
+          } else if (subcommandName === 'add' && latestConfig.commands[nameValue]) {
+            responseMessage = `Script "${nameValue}" already exists.`;
+          } else if (subcommandName === 'update' && !latestConfig.commands[nameValue]) {
+            responseMessage = `Script "${nameValue}" does not exist.`;
+          } else {
+            const scriptValue = getOptionValue(options, 'script');
+            const allowedRolesValue = getOptionValue(options, 'allowed_roles');
+            const allowedGuildsValue = getOptionValue(options, 'allowed_guilds');
+            const ephemeralValue = getOptionValue(options, 'ephemeral');
+            const descriptionValue = getOptionValue(options, 'description');
+
+            if (subcommandName === 'add' && !scriptValue) {
+              responseMessage = 'Missing script filename.';
+            } else if (scriptValue && (scriptValue.includes('/') || scriptValue.includes('\\'))) {
+              responseMessage = 'Script filename must not include path separators.';
+            } else if (scriptValue && !scriptValue.endsWith('.sh')) {
+              responseMessage = 'Script filename must end with .sh.';
+            } else {
+              const parsedRoles = allowedRolesValue ? parseCsvList(allowedRolesValue) : null;
+              if (subcommandName === 'add' && (!parsedRoles || !parsedRoles.length)) {
+                responseMessage = 'allowed_roles must be a comma-separated list of role IDs.';
+              } else if (parsedRoles && !parsedRoles.length) {
+                responseMessage = 'allowed_roles must be a comma-separated list of role IDs.';
+              } else {
+                const parsedGuilds = allowedGuildsValue ? parseCsvList(allowedGuildsValue) : null;
+                if (allowedGuildsValue && parsedGuilds && !parsedGuilds.length) {
+                  responseMessage = 'allowed_guilds must be a comma-separated list of guild IDs.';
+                } else {
+                  const existing = latestConfig.commands[nameValue] ?? {};
+                  const updated = {
+                    ...existing,
+                    ...(descriptionValue !== undefined ? { description: descriptionValue } : {}),
+                    ...(scriptValue ? { script: scriptValue } : {}),
+                    ...(parsedRoles ? { allowed_roles: parsedRoles } : {}),
+                    ...(parsedGuilds ? { allowed_guilds: parsedGuilds } : {}),
+                    ...(ephemeralValue !== undefined ? { ephemeral: Boolean(ephemeralValue) } : {}),
+                  };
+
+                  if (subcommandName === 'add') {
+                    latestConfig.commands[nameValue] = updated;
+                  } else {
+                    latestConfig.commands[nameValue] = updated;
+                  }
+                  await writeScriptConfig(latestConfig);
+                  responseMessage =
+                    subcommandName === 'add'
+                      ? `Added script "${nameValue}".`
+                      : `Updated script "${nameValue}".`;
+                }
+              }
+            }
+          }
+        } else {
+          responseMessage = `Unknown subcommand "${subcommandName}".`;
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: truncateMessage(responseMessage),
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      });
     }
 
     if (name === 'setup-verification') {
@@ -403,39 +600,27 @@ app.get('/auth/callback', async (req, res) => {
       return res.status(500).send('Failed to fetch Google profile.');
     }
 
-    const sheetResponse = await fetch(`${process.env.SCRIPT_API_URL}?email=${encodeURIComponent(userInfo.email)}`);
+    const sheetResponse = await fetch(
+      `${process.env.SCRIPT_API_URL}?email=${encodeURIComponent(userInfo.email)}&serverId=${encodeURIComponent(
+        guildId
+      )}`
+    );
     const sheetData = await sheetResponse.json();
 
     if (!sheetResponse.ok || sheetData?.found === false) {
       return res.send('<html><body>Email not found in database.</body></html>');
     }
 
-    const roleId = ROLE_MAP[sheetData.role];
     const authHeader = `Bot ${process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN}`;
 
     if (sheetData.name) {
-      // 1. Define Prefixes based on Role Name (from Google Sheet)
-      const PREFIX_MAP = {
-        'TA': '[TA]',
-        'Teacher': '[Teacher]',
-        'Board': '[BoD]',
-        'Student': '' // No prefix for students
-      };
+      const nicknamePrefix = sheetData.nicknamePrefix ?? '';
+      let fullNickname = `${nicknamePrefix ? `${nicknamePrefix} ` : ''}${sheetData.name}`;
 
-      // 2. Determine the correct prefix
-      // If the role isn't in the map, default to empty string
-      const prefix = PREFIX_MAP[sheetData.role] ? `${PREFIX_MAP[sheetData.role]} ` : '';
-      
-      // 3. Construct the full nickname
-      let fullNickname = `${prefix}${sheetData.name}`;
-
-      // 4. CRITICAL: Enforce Discord's 32-character limit
-      // If we don't do this, the API request will crash for long names
       if (fullNickname.length > 32) {
         fullNickname = fullNickname.substring(0, 32);
       }
 
-      // 5. Send the update request
       const nicknameResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
         method: 'PATCH',
         headers: {
@@ -450,15 +635,20 @@ app.get('/auth/callback', async (req, res) => {
       }
     }
 
-    if (roleId) {
-      const roleResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
+    if (sheetData.roleId) {
+      const roleResponse = await fetch(
+        `https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${sheetData.roleId}`,
+        {
         method: 'PUT',
         headers: { Authorization: authHeader },
-      });
+        }
+      );
 
       if (!roleResponse.ok) {
         console.error('Failed to assign role:', await roleResponse.text());
       }
+    } else {
+      console.warn(`No roleId provided for ${sheetData.email || userInfo.email}; skipping role assignment.`);
     }
 
     return res.send('<html><body>Verification Successful! You can close this.</body></html>');
@@ -471,3 +661,5 @@ app.get('/auth/callback', async (req, res) => {
 app.listen(PORT, () => {
   console.log('Listening on port', PORT);
 });
+
+void loadScriptConfig();

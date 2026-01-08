@@ -44,20 +44,143 @@ const CHALLENGE_COMMAND = {
   contexts: [0, 2],
 };
 
-const RESTART_KAIROS = {
-  name: 'restart-kairos',
-  description: 'Restart the Kairos websocket and tunnel',
+const EXECUTE_COMMAND = {
+  name: 'execute',
+  description: 'Run a configured script',
   type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
+  integration_types: [0],
+  contexts: [0],
+  options: [
+    {
+      type: 3,
+      name: 'name',
+      description: 'Script key to run',
+      required: true,
+    },
+  ],
 };
 
-const CHECK_KAIROS = {
-  name: 'check-kairos',
-  description: 'Check health of Tunnel, Website, and Websocket',
+const ADMIN_SCRIPT_COMMAND = {
+  name: 'admin-script',
+  description: 'Manage script execution config',
   type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
+  integration_types: [0],
+  contexts: [0],
+  default_member_permissions: '8',
+  options: [
+    {
+      type: 1,
+      name: 'add',
+      description: 'Add a script definition',
+      options: [
+        {
+          type: 3,
+          name: 'name',
+          description: 'Script key',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'script',
+          description: 'Script filename (.sh)',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'allowed_roles',
+          description: 'Comma-separated role IDs',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'allowed_guilds',
+          description: 'Comma-separated guild IDs',
+          required: false,
+        },
+        {
+          type: 5,
+          name: 'ephemeral',
+          description: 'Respond ephemerally',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'description',
+          description: 'Description for /execute',
+          required: false,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'update',
+      description: 'Update a script definition',
+      options: [
+        {
+          type: 3,
+          name: 'name',
+          description: 'Script key',
+          required: true,
+        },
+        {
+          type: 3,
+          name: 'script',
+          description: 'Script filename (.sh)',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'allowed_roles',
+          description: 'Comma-separated role IDs',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'allowed_guilds',
+          description: 'Comma-separated guild IDs',
+          required: false,
+        },
+        {
+          type: 5,
+          name: 'ephemeral',
+          description: 'Respond ephemerally',
+          required: false,
+        },
+        {
+          type: 3,
+          name: 'description',
+          description: 'Description for /execute',
+          required: false,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'delete',
+      description: 'Delete a script definition',
+      options: [
+        {
+          type: 3,
+          name: 'name',
+          description: 'Script key',
+          required: true,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'list',
+      description: 'List configured scripts',
+      options: [
+        {
+          type: 3,
+          name: 'filter',
+          description: 'Filter by script name',
+          required: false,
+        },
+      ],
+    },
+  ],
 };
 
 const SETUP_VERIFICATION = {
@@ -69,6 +192,12 @@ const SETUP_VERIFICATION = {
   default_member_permissions: '8',
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, RESTART_KAIROS, CHECK_KAIROS, SETUP_VERIFICATION];
+const ALL_COMMANDS = [
+  TEST_COMMAND,
+  CHALLENGE_COMMAND,
+  EXECUTE_COMMAND,
+  ADMIN_SCRIPT_COMMAND,
+  SETUP_VERIFICATION,
+];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
