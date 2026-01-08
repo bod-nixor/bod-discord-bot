@@ -19,10 +19,16 @@ Below is a basic overview of the project structure:
 ├── commands.js -> slash command payloads + helpers
 ├── game.js     -> logic specific to RPS
 ├── utils.js    -> utility functions and enums
+├── config/     -> script execution configuration
+├── scripts/    -> sample operational scripts (deploy to host)
 ├── package.json
 ├── README.md
 └── .gitignore
 ```
+
+## Script execution config
+
+This bot uses `config/scripts.json` to control the `/execute` and `/admin-script` commands (see `config/scripts.json.sample` for placeholders). The sample `scripts/` folder contains shell scripts that should be deployed to `/home/nixorc5/scripts` on the host and marked executable (for example: `chmod +x /home/nixorc5/scripts/*.sh`).
 
 ## Running app locally
 
