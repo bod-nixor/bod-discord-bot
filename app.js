@@ -417,6 +417,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             const allowedGuildsValue = getOptionValue(options, 'allowed_guilds');
             const ephemeralValue = getOptionValue(options, 'ephemeral');
             const descriptionValue = getOptionValue(options, 'description');
+            const timeoutValue = getOptionValue(options, 'timeout_ms');
 
             if (subcommandName === 'add' && !scriptValue) {
               responseMessage = 'Missing script filename.';
@@ -434,6 +435,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                 const parsedGuilds = allowedGuildsValue ? parseCsvList(allowedGuildsValue) : null;
                 if (allowedGuildsValue && parsedGuilds && !parsedGuilds.length) {
                   responseMessage = 'allowed_guilds must be a comma-separated list of guild IDs.';
+                } else if (
+                  timeoutValue !== undefined &&
+                  (!Number.isInteger(timeoutValue) || timeoutValue <= 0)
+                ) {
+                  responseMessage = 'timeout_ms must be a positive integer.';
                 } else {
                   const existing = latestConfig.commands[nameValue] ?? {};
                   const updated = {
@@ -443,13 +449,10 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                     ...(parsedRoles ? { allowed_roles: parsedRoles } : {}),
                     ...(parsedGuilds ? { allowed_guilds: parsedGuilds } : {}),
                     ...(ephemeralValue !== undefined ? { ephemeral: Boolean(ephemeralValue) } : {}),
+                    ...(timeoutValue !== undefined ? { timeout_ms: timeoutValue } : {}),
                   };
 
-                  if (subcommandName === 'add') {
-                    latestConfig.commands[nameValue] = updated;
-                  } else {
-                    latestConfig.commands[nameValue] = updated;
-                  }
+                  latestConfig.commands[nameValue] = updated;
                   await writeScriptConfig(latestConfig);
                   responseMessage =
                     subcommandName === 'add'
@@ -658,8 +661,14 @@ app.get('/auth/callback', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log('Listening on port', PORT);
-});
+const startServer = async () => {
+  const config = await loadScriptConfig();
+  if (!config) {
+    console.warn('Script configuration unavailable at startup; /execute and /admin-script commands will fail.');
+  }
+  app.listen(PORT, () => {
+    console.log('Listening on port', PORT);
+  });
+};
 
-void loadScriptConfig();
+startServer();

@@ -28,7 +28,7 @@ Below is a basic overview of the project structure:
 
 ## Script execution config
 
-This bot uses `config/scripts.json` to control the `/execute` and `/admin-script` commands. The sample `scripts/` folder contains shell scripts that should be deployed to `/home/nixorc5/scripts` on the host and marked executable (for example: `chmod +x /home/nixorc5/scripts/*.sh`).
+This bot uses `config/scripts.json` to control the `/execute` and `/admin-script` commands (see `config/scripts.json.sample` for placeholders). The sample `scripts/` folder contains shell scripts that should be deployed to `/home/nixorc5/scripts` on the host and marked executable (for example: `chmod +x /home/nixorc5/scripts/*.sh`).
 
 ## Running app locally
 

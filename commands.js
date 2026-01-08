@@ -109,6 +109,12 @@ const ADMIN_SCRIPT_COMMAND = {
           description: 'Description for /execute',
           required: false,
         },
+        {
+          type: 4,
+          name: 'timeout_ms',
+          description: 'Execution timeout in milliseconds',
+          required: false,
+        },
       ],
     },
     {
@@ -150,6 +156,12 @@ const ADMIN_SCRIPT_COMMAND = {
           type: 3,
           name: 'description',
           description: 'Description for /execute',
+          required: false,
+        },
+        {
+          type: 4,
+          name: 'timeout_ms',
+          description: 'Execution timeout in milliseconds',
           required: false,
         },
       ],
