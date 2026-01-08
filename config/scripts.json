@@ -1,12 +1,12 @@
 {
   "version": 1,
   "scripts_dir": "/home/nixorc5/scripts",
-  "super_admin_roles": ["ROLE_ID_1", "ROLE_ID_2"],
+  "super_admin_roles": ["1442988775268417688"],
   "commands": {
     "check-kairos": {
       "description": "Check health of tunnel, website, websocket",
       "script": "check-kairos.sh",
-      "allowed_roles": ["ROLE_ID_X"],
+      "allowed_roles": ["1442988775268417688"],
       "allowed_guilds": ["1442961521922543750"],
       "ephemeral": false,
       "timeout_ms": 30000
@@ -14,7 +14,7 @@
     "restart-kairos": {
       "description": "Restart Kairos services",
       "script": "restart-kairos.sh",
-      "allowed_roles": ["ROLE_ID_X"],
+      "allowed_roles": ["1442988775268417688"],
       "allowed_guilds": ["1442961521922543750"],
       "ephemeral": false,
       "timeout_ms": 60000
