@@ -279,7 +279,17 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
       }
 
-      const scriptsDir = scriptConfig.scripts_dir || '/home/nixorc5/scripts';
+      if (!scriptConfig.scripts_dir) {
+        console.error('Script configuration missing scripts_dir.');
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Script configuration is missing scripts_dir.',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+      const scriptsDir = scriptConfig.scripts_dir;
       if (commandConfig.script?.includes('/') || commandConfig.script?.includes('\\')) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -638,6 +648,11 @@ app.get('/auth/callback', async (req, res) => {
       }
     }
 
+    const redactedUserId =
+      process.env.NODE_ENV === 'production'
+        ? crypto.createHash('sha256').update(String(userId ?? '')).digest('hex').slice(0, 8)
+        : userId || 'unknown';
+
     if (sheetData.roleId) {
       const roleResponse = await fetch(
         `https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${sheetData.roleId}`,
@@ -648,10 +663,15 @@ app.get('/auth/callback', async (req, res) => {
       );
 
       if (!roleResponse.ok) {
-        console.error('Failed to assign role:', await roleResponse.text());
+        console.error(
+          `Failed to assign role for user ${redactedUserId} in guild ${guildId}:`,
+          await roleResponse.text()
+        );
       }
     } else {
-      console.warn(`No roleId provided for user ${userId || 'unknown'} in guild ${guildId}; skipping role assignment.`);
+      console.warn(
+        `No roleId provided for user ${redactedUserId} in guild ${guildId}; skipping role assignment.`
+      );
     }
 
     return res.send('<html><body>Verification Successful! You can close this.</body></html>');
@@ -665,6 +685,9 @@ const startServer = async () => {
   const config = await loadScriptConfig();
   if (!config) {
     console.warn('Script configuration unavailable at startup; /execute and /admin-script commands will fail.');
+  } else if (!config.scripts_dir) {
+    console.error('Script configuration missing scripts_dir; exiting.');
+    process.exit(1);
   }
   app.listen(PORT, () => {
     console.log('Listening on port', PORT);
