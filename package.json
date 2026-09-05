@@ -13,7 +13,8 @@
     "register": "node commands.js",
     "dev": "nodemon app.js",
     "test": "node --test",
-    "guild:setup": "node scripts/setup-guild.js"
+    "guild:setup": "node scripts/setup-guild.js",
+    "guild:portals": "node scripts/setup-portals.js"
   },
   "author": "Shay DeWael",
   "license": "MIT",
