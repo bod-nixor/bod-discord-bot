@@ -61,6 +61,8 @@ if (String(config.guildId) !== String(guildId)) {
   process.exit(1);
 }
 
+const verificationChannelName = String(config.verificationChannel?.name || '').trim();
+
 const requestedEntityKeys = entityFilter
   ? new Set(entityFilter.split(',').map((value) => value.trim()).filter(Boolean))
   : null;
@@ -159,6 +161,23 @@ function mergeManagedOverwrites(existing, managedIds, desired) {
   return [...preserved, ...desired];
 }
 
+function verificationChannelDesiredOverwrites(roleMap) {
+  const everyoneId = guildId;
+  const verifiedRole = roleMap.get(config.roles.verified);
+  if (!verifiedRole) {
+    throw new Error(`Verification channel requires managed role: ${config.roles.verified}`);
+  }
+
+  // This channel is intentionally fully managed. @everyone can see it until
+  // verification, then the Verified role hides it. Do not preserve other role
+  // or member overwrites here, because an explicit allow could make the channel
+  // visible again to a verified user.
+  return [
+    overwrite(everyoneId, ROLE_TYPE, PERMISSIONS.VIEW_CHANNEL, 0n),
+    overwrite(verifiedRole.id, ROLE_TYPE, 0n, PERMISSIONS.VIEW_CHANNEL),
+  ];
+}
+
 function entityChannelDesiredOverwrites(entity, roleMap, existing = []) {
   const everyoneId = guildId;
   const entityExecId = roleMap.get(roleNameForEntityExecutive(entity)).id;
@@ -227,6 +246,46 @@ async function ensureRoles(state) {
     console.log(`Created role: ${name}`);
   }
   return roleMap;
+}
+
+async function ensureVerificationChannel(state, roleMap) {
+  if (!verificationChannelName) return;
+
+  const matches = state.channels.filter(
+    (channel) => channel.type === 0 && channel.name === verificationChannelName,
+  );
+
+  if (matches.length > 1) {
+    throw new Error(`More than one text channel named #${verificationChannelName} exists.`);
+  }
+
+  const desiredOverwrites = verificationChannelDesiredOverwrites(roleMap);
+  const channel = matches[0];
+
+  if (!channel) {
+    console.log(`Verification channel to create: #${verificationChannelName}`);
+    if (!planOnly) {
+      await discordRequest(`guilds/${guildId}/channels`, {
+        method: 'POST',
+        body: {
+          name: verificationChannelName,
+          type: 0,
+          permission_overwrites: desiredOverwrites,
+        },
+      });
+      console.log(`Created verification channel: #${verificationChannelName}`);
+    }
+    return;
+  }
+
+  console.log(`Verification channel exists: #${verificationChannelName}`);
+  if (!planOnly) {
+    await discordRequest(`channels/${channel.id}`, {
+      method: 'PATCH',
+      body: { permission_overwrites: desiredOverwrites },
+    });
+    console.log(`Synced unverified-only permissions: #${verificationChannelName}`);
+  }
 }
 
 async function ensureEntityStructure(state, roleMap) {
@@ -314,8 +373,10 @@ async function main() {
         simulatedRoleMap.set(name, { id: String(fakeId++), name });
       }
     }
+    await ensureVerificationChannel(state, simulatedRoleMap);
     await ensureEntityStructure(state, simulatedRoleMap);
   } else {
+    await ensureVerificationChannel(state, roleMap);
     await ensureEntityStructure(state, roleMap);
   }
 
