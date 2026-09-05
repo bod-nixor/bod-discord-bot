@@ -1,8 +1,22 @@
 # Nixor Corporate '26 Discord v2 demo
 
-This branch contains the first runnable setup layer for guild `1545706528152223814`.
+This branch contains the demo implementation for guild `1545706528152223814`.
 
-## What it creates
+## Compatibility rule
+
+Schema v2 is opt-in. The existing verification behavior for legacy servers remains in `app.js` and is still used whenever the Sheet API response does not contain `schemaVersion: 2`.
+
+Legacy flow remains:
+
+1. Sheet API returns `name`, `nicknamePrefix`, and `roleId`.
+2. Bot applies the nickname prefix.
+3. Bot adds the single returned role.
+
+Only a v2 API response enters the new reconciliation code. The current v2 server is `1545706528152223814`.
+
+Run `npm test` before deploying changes. The compatibility test asserts that both the v2 route and the old `nicknamePrefix` / `roleId` path remain present.
+
+## What guild setup creates
 
 Global roles:
 
@@ -36,7 +50,7 @@ Base permissions are:
 | admin | write | write | write | no access |
 | volunteers | write | no access | no access | write |
 
-Assigned Members of Board are intentionally not granted globally. Their per-entity access will be applied by the verification/sync layer so a Board member can be assigned to only the entities they supervise. They will receive both the entity's `board` and `admin` channels.
+Assigned Members of Board are not granted global channel access. V2 verification applies direct member access to both the `board` and `admin` channels of only their assigned entities.
 
 ## Safe demo flow
 
@@ -59,31 +73,87 @@ npm run guild:setup -- --guild 1545706528152223814 --plan
 npm run guild:setup -- --guild 1545706528152223814 --apply
 ```
 
-The command is idempotent: it reuses roles/categories/channels with the expected names and reconciles the bot-managed permission overwrites. It does not delete unknown roles or channels. Existing member-specific permission overwrites are preserved, which is required for per-entity Member of Board assignments.
+The setup command is idempotent: it reuses roles/categories/channels with the expected names and reconciles bot-managed role overwrites. It does not delete unknown roles or channels. Existing member-specific permission overwrites are preserved by guild setup.
+
+## V2 verification
+
+The Sheet API v2 response has the form:
+
+```json
+{
+  "schemaVersion": 2,
+  "found": true,
+  "serverId": "1545706528152223814",
+  "person": {
+    "email": "person@nixorcollege.edu.pk",
+    "name": "Person Name",
+    "studentId": "20270000",
+    "campus": "NCC"
+  },
+  "assignments": [
+    {
+      "relationship": "Executive",
+      "entity": "NCS",
+      "position": "CRM",
+      "source": "exec_database"
+    },
+    {
+      "relationship": "Volunteer",
+      "entity": "NLX",
+      "position": null,
+      "source": "discord_assignments"
+    }
+  ]
+}
+```
+
+The bot derives all desired managed roles, compares them with the member's current managed roles, adds missing roles, removes stale managed roles, and leaves unrelated/manual roles untouched.
+
+Examples:
+
+- NCS Executive / CRM -> `Verified`, `Executive`, `NCS`, `NCS — Executive`, `CRM`
+- NCS Executive + NLX Volunteer -> all of the above plus `Volunteer`, `NLX`, `NLX — Volunteer`
+- Member of Board assigned NCS + NLX -> `Verified`, `Member of Board`, `NCS`, `NLX`, plus direct access to both entities' `board` and `admin` channels
+- Admin -> `Verified`, `Admin`
+
+Invalid entities, positions, or relationship shapes fail closed rather than guessing permissions.
+
+## Google Apps Script deployment
+
+The backward-compatible Apps Script source is stored at:
+
+`google-apps-script/Code.gs`
+
+It preserves the existing server-sheet/config lookup for legacy servers and only invokes the v2 lookup for a server explicitly marked active with schema version 2 in `discord_servers`.
+
+The v2 API reads:
+
+- `exec database` for active Executive assignments
+- `discord_assignments` for Volunteer / Member of Board / Chairperson / Admin assignments
+- `discord_people` and `students` for identity resolution
+- `discord_entities` and `discord_positions` for validation
+
+The bound Apps Script project must be updated with `google-apps-script/Code.gs` and its web-app deployment updated before v2 verification can work. Merely changing spreadsheet cells does not redeploy Apps Script code.
 
 ## Required environment
 
-The setup command uses the existing bot credentials and accepts either:
+The setup and verification code uses the existing bot credentials and accepts either:
 
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_TOKEN`
 
-The bot role must have `Manage Roles` and `Manage Channels`, and it must sit above every role the bot needs to assign later.
+Existing OAuth variables and `SCRIPT_API_URL` remain unchanged.
+
+The bot role must have `Manage Roles`, `Manage Channels`, and `Manage Nicknames`, and it must sit above every managed role.
 
 ## Configuration
 
-The organisational structure is data-driven from:
+The Discord-side organisational structure is data-driven from:
 
 `config/guilds/1545706528152223814.json`
 
-The setup logic contains no hardcoded entity names, position names, or Discord role/channel IDs.
+The setup and verification logic contain no hardcoded entity names, position names, or generated Discord role/channel IDs.
 
-## Next demo layer
+## Next layer
 
-The next implementation step is verification reconciliation:
-
-1. Google Sheet API returns all assignments for the verified email.
-2. Bot derives the required global/entity/scoped/position roles.
-3. Bot adds missing managed roles and removes stale managed roles without touching unrelated roles.
-4. Member of Board entity assignments add direct access to that entity's `board` and `admin` channels.
-5. Dynamic `/channel create` and `/channel manage` use the same assignment model for event chats and cross-entity portals.
+After v2 verification is tested with real demo users, add the generic dynamic-space engine used by `/channel create` and `/channel manage` for event chats and cross-entity announcement portals.
