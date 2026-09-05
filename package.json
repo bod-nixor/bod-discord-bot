@@ -15,6 +15,7 @@
     "test": "node --test",
     "guild:setup": "node scripts/setup-guild.js",
     "guild:portals": "node scripts/setup-portals.js",
+    "guild:v2": "node scripts/setup-v2.js",
     "runtime:patch-channel": "node scripts/patch-channel-runtime.js"
   },
   "author": "Shay DeWael",
