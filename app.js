@@ -16,6 +16,7 @@ import { execFile } from 'child_process';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
 import { reconcileV2Verification } from './lib/verification-v2.js';
+import { channelCommandErrorMessage, handleChannelCommand } from './lib/channel-spaces.js';
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
 const GOOGLE_REDIRECT_URI = 'https://discord.nixorcorporate.com/auth/callback';
@@ -485,6 +486,43 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           },
         });
       });
+    }
+
+    if (name === 'channel') {
+      if (!ensureGuildContext(guildId, res)) {
+        return;
+      }
+
+      const subcommand = data.options?.[0];
+      const userId = member?.user?.id;
+
+      try {
+        const result = await handleChannelCommand({
+          guildId,
+          userId,
+          memberRoleIds: member?.roles ?? [],
+          subcommand: subcommand?.name,
+          options: subcommand?.options ?? [],
+          token: process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN,
+        });
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: result.message,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      } catch (err) {
+        console.error('Managed channel command failed:', err);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: channelCommandErrorMessage(err),
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
     }
 
     if (name === 'setup-verification') {
