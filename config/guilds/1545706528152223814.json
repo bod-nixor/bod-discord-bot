@@ -10,6 +10,9 @@
     "chairperson": "Chairperson",
     "admin": "Admin"
   },
+  "verificationChannel": {
+    "name": "verify"
+  },
   "entities": [
     { "key": "AAO", "name": "AAO", "slug": "aao" },
     { "key": "AAA", "name": "AAA", "slug": "aaa" },
