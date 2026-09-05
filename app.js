@@ -15,6 +15,7 @@ import fetch from 'node-fetch';
 import { execFile } from 'child_process';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
+import { reconcileV2Verification } from './lib/verification-v2.js';
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
 const GOOGLE_REDIRECT_URI = 'https://discord.nixorcorporate.com/auth/callback';
@@ -622,6 +623,29 @@ app.get('/auth/callback', async (req, res) => {
 
     if (!sheetResponse.ok || sheetData?.found === false) {
       return res.send('<html><body>Email not found in database.</body></html>');
+    }
+
+    // Schema v2 is explicitly opt-in. Legacy responses continue through the
+    // original nicknamePrefix + roleId implementation below unchanged.
+    if (Number(sheetData?.schemaVersion) === 2) {
+      const v2Token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
+      const result = await reconcileV2Verification({
+        guildId,
+        userId,
+        sheetData,
+        token: v2Token,
+      });
+
+      const redactedUserId =
+        process.env.NODE_ENV === 'production'
+          ? crypto.createHash('sha256').update(String(userId ?? '')).digest('hex').slice(0, 8)
+          : userId || 'unknown';
+      console.log(
+        `V2 verification reconciled for user ${redactedUserId} in guild ${guildId}: ` +
+          `${result.rolesAdded} role(s) added, ${result.rolesRemoved} removed.`,
+      );
+
+      return res.send('<html><body>Verification Successful! You can close this.</body></html>');
     }
 
     const authHeader = `Bot ${process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN}`;
