@@ -13,6 +13,10 @@
   "verificationChannel": {
     "name": "verify"
   },
+  "portalCategories": {
+    "board": "BOARD PORTALS",
+    "admin": "ADMIN PORTALS"
+  },
   "entities": [
     { "key": "AAO", "name": "AAO", "slug": "aao" },
     { "key": "AAA", "name": "AAA", "slug": "aaa" },
