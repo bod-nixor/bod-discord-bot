@@ -16,7 +16,13 @@ import { execFile } from 'child_process';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
 import { reconcileV2Verification } from './lib/verification-v2.js';
-import { channelCommandErrorMessage, handleChannelCommand } from './lib/channel-spaces.js';
+import {
+  channelWizardErrorMessage,
+  handleChannelWizardComponent,
+  handleChannelWizardModal,
+  isChannelWizardCustomId,
+  startChannelWizard,
+} from './lib/channel-wizard.js';
 
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
 const GOOGLE_REDIRECT_URI = 'https://discord.nixorcorporate.com/auth/callback';
@@ -494,31 +500,30 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       }
 
       const subcommand = data.options?.[0];
-      const userId = member?.user?.id;
-
-      try {
-        const result = await handleChannelCommand({
-          guildId,
-          userId,
-          memberRoleIds: member?.roles ?? [],
-          subcommand: subcommand?.name,
-          options: subcommand?.options ?? [],
-          token: process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN,
-        });
-
+      if (subcommand?.name !== 'create') {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: result.message,
+            content: 'Unknown channel action.',
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
+      }
+
+      try {
+        const response = await startChannelWizard({
+          guildId,
+          userId: member?.user?.id,
+          memberRoleIds: member?.roles ?? [],
+          token: process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN,
+        });
+        return res.send(response);
       } catch (err) {
-        console.error('Managed channel command failed:', err);
+        console.error('Could not start channel wizard:', err);
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: channelCommandErrorMessage(err),
+            content: channelWizardErrorMessage(err),
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
@@ -554,6 +559,26 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   if (type === InteractionType.MESSAGE_COMPONENT) {
     const { custom_id: customId } = data;
     const { member, guild_id: guildId } = req.body;
+
+    if (isChannelWizardCustomId(customId)) {
+      try {
+        const response = await handleChannelWizardComponent({
+          guildId,
+          userId: member?.user?.id,
+          data,
+        });
+        return res.send(response);
+      } catch (err) {
+        console.error('Channel wizard component failed:', err);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: channelWizardErrorMessage(err),
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+    }
 
     if (customId === 'verify_google_init') {
       const userId = member?.user?.id;
@@ -597,6 +622,31 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     console.error(`unknown component: ${customId}`);
     return res.status(400).json({ error: 'unknown component' });
+  }
+
+  // Discord interaction type 5 is a modal submission. Keep this numeric so
+  // the runtime remains compatible with the currently installed interactions package.
+  if (type === 5 && isChannelWizardCustomId(data?.custom_id)) {
+    const { member, guild_id: guildId } = req.body;
+    try {
+      const response = await handleChannelWizardModal({
+        guildId,
+        userId: member?.user?.id,
+        memberRoleIds: member?.roles ?? [],
+        data,
+        token: process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN,
+      });
+      return res.send(response);
+    } catch (err) {
+      console.error('Channel wizard modal failed:', err);
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: channelWizardErrorMessage(err),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
   }
 
   console.error('unknown interaction type', type);

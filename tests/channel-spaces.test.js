@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allowedAudienceRoleNames,
   deriveBoardAssignedEntityKeys,
   normalizeChannelName,
   parseMemberIds,
@@ -48,4 +49,24 @@ test('derives Board assignments only from direct Board-channel member overwrites
     [...deriveBoardAssignedEntityKeys(config, channels, '111111111111111111')],
     ['NCS'],
   );
+});
+
+
+test('safe global audience roles exclude Verified and include Board/position roles', () => {
+  const config = {
+    roles: {
+      verified: 'Verified',
+      executive: 'Executive',
+      volunteer: 'Volunteer',
+      memberOfBoard: 'Member of Board',
+      chairperson: 'Chairperson',
+      admin: 'Admin',
+    },
+    positions: ['CEO/EP', 'CFO'],
+  };
+
+  const roles = allowedAudienceRoleNames(config);
+  assert.equal(roles.includes('Verified'), false);
+  assert.equal(roles.includes('Member of Board'), true);
+  assert.equal(roles.includes('CEO/EP'), true);
 });

@@ -197,7 +197,7 @@ const ADMIN_SCRIPT_COMMAND = {
 
 const CHANNEL_COMMAND = {
   name: 'channel',
-  description: 'Create managed private Corporate channels',
+  description: 'Create and manage private Corporate channels',
   type: 1,
   integration_types: [0],
   contexts: [0],
@@ -205,62 +205,7 @@ const CHANNEL_COMMAND = {
     {
       type: 1,
       name: 'create',
-      description: 'Create an entity, Board, or Admin channel',
-      options: [
-        {
-          type: 3,
-          name: 'scope',
-          description: 'Who owns this channel',
-          required: true,
-          choices: [
-            { name: 'Entity', value: 'entity' },
-            { name: 'Board', value: 'board' },
-            { name: 'Admin', value: 'admin' },
-          ],
-        },
-        {
-          type: 3,
-          name: 'name',
-          description: 'Channel name',
-          required: true,
-        },
-        {
-          type: 3,
-          name: 'entity',
-          description: 'Entity key for Entity scope, e.g. NCS',
-          required: false,
-        },
-        {
-          type: 3,
-          name: 'entities',
-          description: 'Board/Admin audience entities, comma-separated, e.g. NCS,NLX',
-          required: false,
-        },
-        {
-          type: 5,
-          name: 'include_executives',
-          description: 'Give the selected entity executive teams access (default: yes)',
-          required: false,
-        },
-        {
-          type: 5,
-          name: 'include_volunteers',
-          description: 'Give all volunteers of selected entities access (default: no)',
-          required: false,
-        },
-        {
-          type: 3,
-          name: 'members',
-          description: 'Optional Discord user mentions or IDs separated by spaces/commas',
-          required: false,
-        },
-        {
-          type: 5,
-          name: 'read_only',
-          description: 'Audience can read but only the creator/management can send',
-          required: false,
-        },
-      ],
+      description: 'Open the guided channel setup',
     },
   ],
 };
