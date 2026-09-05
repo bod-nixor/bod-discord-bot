@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "guildId": "1545706528152223814",
+  "name": "Nixor Corporate '26",
+  "roles": {
+    "verified": "Verified",
+    "executive": "Executive",
+    "volunteer": "Volunteer",
+    "memberOfBoard": "Member of Board",
+    "chairperson": "Chairperson",
+    "admin": "Admin"
+  },
+  "entities": [
+    { "key": "AAO", "name": "AAO", "slug": "aao" },
+    { "key": "AAA", "name": "AAA", "slug": "aaa" },
+    { "key": "MBAKH", "name": "MBAKH", "slug": "mbakh" },
+    { "key": "NCA", "name": "NCA", "slug": "nca" },
+    { "key": "NCS", "name": "NCS", "slug": "ncs" },
+    { "key": "NEMS", "name": "NEMS", "slug": "nems" },
+    { "key": "NES", "name": "NES", "slug": "nes" },
+    { "key": "NFS", "name": "NFS", "slug": "nfs" },
+    { "key": "NH", "name": "NH", "slug": "nh" },
+    { "key": "NLX", "name": "NLX", "slug": "nlx" },
+    { "key": "NMH", "name": "NMH", "slug": "nmh" },
+    { "key": "NR", "name": "NR", "slug": "nr" },
+    { "key": "RAR", "name": "RAR", "slug": "rar" },
+    { "key": "Replenish", "name": "Replenish", "slug": "replenish" },
+    { "key": "SCWP", "name": "SCWP", "slug": "scwp" },
+    { "key": "TSKL", "name": "TSKL", "slug": "tskl" }
+  ],
+  "positions": [
+    "AM",
+    "CCO",
+    "CCD/CRND",
+    "CEO/EP",
+    "CFO",
+    "CHRO",
+    "CIO",
+    "CM",
+    "CMO",
+    "COO",
+    "CRM",
+    "DA",
+    "DRE",
+    "FA",
+    "HRM",
+    "MIT",
+    "MM",
+    "PM"
+  ],
+  "standardChannels": [
+    { "key": "team", "suffix": "team" },
+    { "key": "board", "suffix": "board" },
+    { "key": "admin", "suffix": "admin" },
+    { "key": "volunteers", "suffix": "volunteers" }
+  ]
+}
